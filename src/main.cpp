@@ -1,3 +1,4 @@
+#include <ESP8266HTTPClient.h>
 #include "main.h"
 
 void setup() {
@@ -114,6 +115,7 @@ void BehaveByStationType() {
     ValidateTimeouts();
     switch (StationConfig.SType) {
         case Beacon:
+            BehaveAsBeacon();
             break;
         case FieldStation:
             BehaveAsFieldStation();
@@ -133,9 +135,28 @@ void ValidateTimeouts() {
         PingStatus.PingSent = false;
     if (millis() - BeaconDiscoverStatus.DiscoverSentWhen > DISCOVER_TIMEOUT)
         BeaconDiscoverStatus.DiscoverSent = false;
-    if (millis() - OtherDataStatus.OtherDataSentWhen > OTHER_DATA_TIMEOUT)
+    if (millis() - OtherDataStatus.OtherDataSentWhen > OTHER_DATA_TIMEOUT) {
         OtherDataStatus.OtherDataSent = false;
+        if(OtherDataStatus.AttemptsCount > OTHER_DATA_MAX_ATTEMPTS){
+            OtherDataStatus.OtherDataCollected = false;
+            OtherDataStatus.OtherDataRequested = false;
+        }else{
+            OtherDataStatus.AttemptsCount++;
+        }
+    }
 }
+
+void BehaveAsBeacon() {
+    if (!OtherDataStatus.OtherDataSent &&
+        millis() - WaterLevelStatus.collect_water_level_time > WATER_LEVEL_COLLECT_TIME) {
+        Serial.println("Water level requested!");
+        SendPacket(PacketType::Syn, "OD", StationConfig.Id, StationConfig.WaterLevelFSId);
+        OtherDataStatus.OtherDataSent = true;
+        OtherDataStatus.OtherDataSentWhen = millis();
+        OtherDataStatus.OtherDataTarget = StationConfig.WaterLevelFSId;
+    }
+}
+
 
 void BehaveAsPinger() {
     if (BeaconId == "") {
@@ -166,10 +187,11 @@ void BehaveAsFieldStation() {
         }
     } else {
         if (!OtherDataStatus.OtherDataSent && OtherDataStatus.OtherDataCollected &&
-            OtherDataStatus.OtherDataRequested) {
+            OtherDataStatus.OtherDataRequested && StationConfig.FSType == WaterSensor) {
             Serial.println("Other data sent!");
-            SendPacket(PacketType::Syn, "OD", StationConfig.Id, BeaconId);
-//            fadf;
+            String data = "OD";
+            data += WaterLevelStatus.actualLevel;
+            SendPacket(PacketType::SynAck, data, StationConfig.Id, BeaconId);
             OtherDataStatus.OtherDataSent = true;
             OtherDataStatus.OtherDataSentWhen = millis();
             OtherDataStatus.OtherDataTarget = BeaconId;
@@ -203,6 +225,7 @@ void SendPacket(PacketType type, const String &content, const String &source, co
 
 void ProcessPacket(JsonObject *pckt) {
     String content = pckt->get<String>("c");
+    Serial.println(content);
     if (content == "DiscB") {
         ProcessDiscoverBeacon(pckt);
     } else if (content == "Ping") {
@@ -213,7 +236,9 @@ void ProcessPacket(JsonObject *pckt) {
 }
 
 void CollectSensorData() {
-
+    Serial.println("Collecting data...");
+    WaterLevelStatus.actualLevel = random(100);
+    OtherDataStatus.OtherDataCollected = true;
 }
 
 void ProcessOtherData(JsonObject *pckt) {
@@ -222,19 +247,41 @@ void ProcessOtherData(JsonObject *pckt) {
     auto type = (PacketType) pckt->get<int>("t");
     switch (type) {
         case Syn:
-            if (destination == StationConfig.Id) {
+            if (destination == StationConfig.Id && source == BeaconId) {
                 OtherDataStatus.OtherDataRequested = true;
+                OtherDataStatus.AttemptsCount = 0;
                 CollectSensorData();
             }
             break;
         case SynAck:
-            if (OtherDataStatus.OtherDataSent && OtherDataStatus.OtherDataTarget == source) {
+            if (OtherDataStatus.OtherDataSent && OtherDataStatus.OtherDataTarget == source && OtherDataStatus.OtherDataTarget == StationConfig.WaterLevelFSId) {
                 Serial.print("Successfully got data from:");
                 Serial.println(source);
                 OtherDataStatus.OtherDataSent = false;
                 OtherDataStatus.OtherDataSentWhen = 0;
                 OtherDataStatus.OtherDataTarget = "";
-//                afsdfsd;
+                WaterLevelStatus.collect_water_level_time = millis();
+                String content = pckt->get<String>("c");
+
+                if (WiFi.status() == WL_CONNECTED && String(StationConfig.WebServerAddress) != "") { //Check Wi-Fi connection status
+
+                    String url = StationConfig.WebServerAddress;
+                    url += WaterLevelStatus.waterLevelServerEndpoint;
+                    http.begin(client,url);      //Specify request destination
+                    http.addHeader("Auth", "bumbac");
+                    http.addHeader("Level", content.substring(2));
+
+                    int httpCode = http.POST("Hello world");   //Send the request
+                    String payload = http.getString();                  //Get the response payload
+
+                    Serial.println(httpCode);   //Print HTTP return code
+                    Serial.println(payload);    //Print request response payload
+                    http.end();  //Close connection
+
+                } else {
+                    Serial.println("Error in WiFi connection");
+                }
+
                 SendPacket(PacketType::Ack, "OD", StationConfig.Id, source);
                 ShineSuccess();
             }
@@ -350,11 +397,13 @@ String SendHTML() {
                  "\"><br>\n"
 
                  "        <label for=\"wsa\">Web server address (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"wsa\" name=\"wsa\" value=\"" + String(StationConfig.WebServerAddress) +
+                 "        <input type=\"text\" id=\"wsa\" name=\"wsa\" value=\"" +
+                 String(StationConfig.WebServerAddress) +
                  "\"><br>\n"
 
                  "        <label for=\"wlfsid\">Water level FS Id (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"wlfsid\" name=\"wlfsid\" value=\"" + String(StationConfig.WaterLevelFSId) +
+                 "        <input type=\"text\" id=\"wlfsid\" name=\"wlfsid\" value=\"" +
+                 String(StationConfig.WaterLevelFSId) +
                  "\"><br>\n"
 
                  "        <label for=\"id\">ID:</label>\n"
@@ -400,7 +449,7 @@ void HandleOnConnect() {
             SaveConfiguration();
             Serial.println("Configuration writed.");
             LoadConfiguration();
-            if(oldSsid != StationConfig.SSID){
+            if (oldSsid != StationConfig.SSID) {
                 resetFunc();
             }
         }

@@ -19,8 +19,10 @@
 #define PIN_SEND_LED 15
 #define CONFIGURATION_ADDRESS 1
 #define DISCOVER_TIMEOUT 12000
+#define WATER_LEVEL_COLLECT_TIME 10000
 #define PING_TIMEOUT 4000
 #define OTHER_DATA_TIMEOUT 5000
+#define OTHER_DATA_MAX_ATTEMPTS 3
 #define LED_TIMEOUT 500
 // you will need to define the pins to create the serial port
 SoftwareSerial ESerial(PIN_RX, PIN_TX);
@@ -29,6 +31,9 @@ SoftwareSerial ESerial(PIN_RX, PIN_TX);
 EBYTE Transceiver(&ESerial, PIN_M0, PIN_M1, PIN_AX);
 
 DynamicJsonBuffer jBuffer;
+WiFiClient client;
+HTTPClient http;
+
 
 enum PacketType {
     Syn = 1, SynAck = 2, Ack = 3
@@ -70,12 +75,21 @@ struct OtherDataStatusStruct {
     unsigned long OtherDataSentWhen = 0;
     String OtherDataTarget = "";
     String OtherData = "";
+    int AttemptsCount = 0;
 } OtherDataStatus;
 
+
+struct WaterLevelStatusStruct {
+    unsigned long collect_water_level_time = 0;
+    int maximumLevel = 0;
+    int minimumLevel = 0;
+    int actualLevel = 0;
+    const String waterLevelServerEndpoint = "api/water-level/set";
+} WaterLevelStatus;
 String BeaconId = "";
+
 const String ssid = "LoraNet";  // Enter SSID here
-const char *password = "12345678";  //Enter Password here
-const char *waterLevelServerEndpoint = "api/water-level/set";  //Enter Password here
+const String password = "12345678";  //Enter Password here
 
 unsigned long shine_success_time = 0;
 unsigned long shine_send_time = 0;
@@ -138,6 +152,8 @@ String GetFieldStationTypeFromEnum();
 bool IsWifiAvailable(const String &wifi_ssid);
 
 void(* resetFunc) (void) = 0;  // declare reset fuction at address 0
+
+void BehaveAsBeacon();
 
 #endif //LORARANGEMETER_MAIN_H
 
