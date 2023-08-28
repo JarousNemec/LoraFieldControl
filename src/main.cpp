@@ -3,6 +3,9 @@
 void setup() {
     Serial.begin(9600);
 
+    //Load configuration
+    LoadConfiguration();
+
     //Init Transceiver
     ESerial.begin(9600);
     Serial.println("Starting Chat");
@@ -11,8 +14,8 @@ void setup() {
 
     //Init web server and Wi-Fi ap
     randomSeed(analogRead(A0));
-//    WiFi.softAP(ssid + String(random(300)), password);
-    WiFi.softAP(ssid);
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(ssid + String(StationConfig.Id), password);
     WiFi.softAPConfig(local_ip, gateway, subnet);
     delay(100);
     server.on("/", HandleOnConnect);
@@ -23,8 +26,52 @@ void setup() {
     pinMode(PIN_SUCCESS_LED, OUTPUT);
     pinMode(PIN_SEND_LED, OUTPUT);
 
-    //Load configuration
-    LoadConfiguration();
+    if (!IsWifiAvailable(StationConfig.SSID) || StationConfig.SType != Beacon)
+        return;
+
+    // Begin WiFi
+    WiFi.begin(String(StationConfig.SSID), String(StationConfig.PSW));
+
+    // Connecting to WiFi...
+    Serial.print("Connecting to ");
+    Serial.print(StationConfig.SSID);
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(100);
+        Serial.print(".");
+    }
+
+    // Connected to Wi-Fi
+    Serial.println();
+    Serial.println("Connected!");
+    Serial.print("IP address for network ");
+    Serial.print(StationConfig.SSID);
+    Serial.print(" : ");
+    Serial.println(WiFi.localIP());
+    Serial.print("IP address for network ");
+    Serial.print(ssid + String(StationConfig.Id));
+    Serial.print(" : ");
+    Serial.print(WiFi.softAPIP());
+
+
+}
+
+bool IsWifiAvailable(const String &wifi_ssid) {
+    bool IsAvailable = false;
+    if (wifi_ssid == "")
+        return false;
+    char numberOfNetworks = WiFi.scanNetworks();
+
+    for (int i = 0; i < numberOfNetworks; i++) {
+        if (WiFi.SSID(i) == wifi_ssid)
+            IsAvailable = true;
+        Serial.print("Network name: ");
+        Serial.println(WiFi.SSID(i));
+        Serial.print("Signal strength: ");
+        Serial.println(WiFi.RSSI(i));
+        Serial.println("-----------------------");
+
+    }
+    return IsAvailable;
 }
 
 void loop() {
@@ -292,24 +339,46 @@ String SendHTML() {
                  "    <title>Station control</title>\n"
                  "</head>\n"
                  "<body>\n"
-                 "    <h3>Actual set Id: " + String(StationConfig.Id) + "</h3><h3>Actual set Type: " + String(GetStationTypeFromEnum()) + "</h3><br>\n"
                  "    <form action=\"/\" method=\"post\">\n"
-                 "        <label for=\"ssid\">WWW ap SSID (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"ssid\" name=\"ssid\" value=\"" + String(StationConfig.SSID) + "\"><br>\n"
-                 "        <label for=\"psw\">WWW ap PSW (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"psw\" name=\"psw\" value=\"" + String(StationConfig.PSW) + "\"><br>\n"
+
+                 "        <label for=\"ssid\">Gateway SSID (only for beacon):</label>\n"
+                 "        <input type=\"text\" id=\"ssid\" name=\"ssid\" value=\"" + String(StationConfig.SSID) +
+                 "\"><br>\n"
+
+                 "        <label for=\"psw\">Gateway PSW (only for beacon):</label>\n"
+                 "        <input type=\"text\" id=\"psw\" name=\"psw\" value=\"" + String(StationConfig.PSW) +
+                 "\"><br>\n"
+
+                 "        <label for=\"wsa\">Web server address (only for beacon):</label>\n"
+                 "        <input type=\"text\" id=\"wsa\" name=\"wsa\" value=\"" + String(StationConfig.WebServerAddress) +
+                 "\"><br>\n"
+
+                 "        <label for=\"wlfsid\">Water level FS Id (only for beacon):</label>\n"
+                 "        <input type=\"text\" id=\"wlfsid\" name=\"wlfsid\" value=\"" + String(StationConfig.WaterLevelFSId) +
+                 "\"><br>\n"
+
                  "        <label for=\"id\">ID:</label>\n"
                  "        <input type=\"text\" id=\"id\" name=\"id\" value=\"" + String(StationConfig.Id) + "\"><br>\n"
-                 "        <label>Station Type:</label>\n"
-                 "        <input type=\"radio\" id=\"beacon\" name=\"type\" value=\"Beacon\" " + (StationConfig.SType == Beacon ? "checked" : "") + " ><label for=\"beacon\" >Beacon</label>\n"
-                 "        <input type=\"radio\" id=\"fieldStation\" name=\"type\" value=\"FieldStation\" " + (StationConfig.SType == FieldStation ? "checked" : "") + " ><label for=\"fieldStation\">FieldStation</label>\n"
-                 "        <input type=\"radio\" id=\"bridge\" name=\"type\" value=\"Bridge\"><label for=\"bridge\" " + (StationConfig.SType == Bridge ? "checked" : "") + " >Bridge</label>\n"
-                 "        <input type=\"radio\" id=\"pinger\" name=\"type\" value=\"Pinger\"><label for=\"pinger\" " + (StationConfig.SType == Pinger ? "checked" : "") + " >Pinger</label><br>\n"
-                 "        <label>FieldStation Type:</label>\n"
-                 "        <input type=\"radio\" id=\"beacon\" name=\"type\" value=\"Beacon\" " + (StationConfig.SType == Beacon ? "checked" : "") + " ><label for=\"beacon\" >Beacon</label>\n"
-                 "        <input type=\"radio\" id=\"fieldStation\" name=\"type\" value=\"FieldStation\" " + (StationConfig.SType == FieldStation ? "checked" : "") + " ><label for=\"fieldStation\">FieldStation</label>\n"
-                 "        <input type=\"radio\" id=\"bridge\" name=\"type\" value=\"Bridge\"><label for=\"bridge\" " + (StationConfig.SType == Bridge ? "checked" : "") + " >Bridge</label>\n"
-                 "        <input type=\"radio\" id=\"pinger\" name=\"type\" value=\"Pinger\"><label for=\"pinger\" " + (StationConfig.SType == Pinger ? "checked" : "") + " >Pinger</label><br><br>\n"
+
+                                                                                                            "        <label>Station Type:</label>\n"
+                                                                                                            "        <input type=\"radio\" id=\"beacon\" name=\"stype\" value=\"Beacon\" " +
+                 (StationConfig.SType == Beacon ? "checked" : "") + " ><label for=\"beacon\" >Beacon</label>\n"
+                                                                    "        <input type=\"radio\" id=\"fieldStation\" name=\"stype\" value=\"FieldStation\" " +
+                 (StationConfig.SType == FieldStation ? "checked" : "") +
+                 " ><label for=\"fieldStation\">FieldStation</label>\n"
+                 "        <input type=\"radio\" id=\"bridge\" name=\"stype\" value=\"Bridge\"><label for=\"bridge\" " +
+                 (StationConfig.SType == Bridge ? "checked" : "") + " >Bridge</label>\n"
+                                                                    "        <input type=\"radio\" id=\"pinger\" name=\"stype\" value=\"Pinger\"><label for=\"pinger\" " +
+                 (StationConfig.SType == Pinger ? "checked" : "") + " >Pinger</label><br>\n"
+
+                                                                    "        <label>FieldStation Type:</label>\n"
+                                                                    "        <input type=\"radio\" id=\"waterSensor\" name=\"fstype\" value=\"WaterSensor\" " +
+                 (StationConfig.FSType == WaterSensor ? "checked" : "") +
+                 " ><label for=\"waterSensor\" >WaterSensor</label>\n"
+                 "        <input type=\"radio\" id=\"solarPanelController\" name=\"fstype\" value=\"SolarPanelController\" " +
+                 (StationConfig.FSType == SolarPanelController ? "checked" : "") +
+                 " ><label for=\"solarPanelController\">SolarPanelController</label>\n"
+
                  "        <input type=\"submit\" value=\"Submit\">"
                  "    </form>\n"
                  "</body>\n"
@@ -318,14 +387,22 @@ String SendHTML() {
 }
 
 void HandleOnConnect() {
-
-    if (server.method() == HTTP_POST && server.args() == 2) {
-        if (server.argName(0) == "id" && server.argName(1) == "type") {
-            server.arg(0).toCharArray(StationConfig.Id, 128);
-            StationConfig.SType = GetStationTypeFromString(server.arg(1));
+    if (server.method() == HTTP_POST && server.args() == 7) {
+        if (server.argName(4) == "id" && server.argName(5) == "stype") {
+            String oldSsid = StationConfig.SSID;
+            server.arg(0).toCharArray(StationConfig.SSID, 32);
+            server.arg(1).toCharArray(StationConfig.PSW, 32);
+            server.arg(2).toCharArray(StationConfig.WebServerAddress, 32);
+            server.arg(3).toCharArray(StationConfig.WaterLevelFSId, 32);
+            server.arg(4).toCharArray(StationConfig.Id, 32);
+            StationConfig.SType = GetStationTypeFromString(server.arg(5));
+            StationConfig.FSType = GetFieldStationTypeFromString(server.arg(6));
             SaveConfiguration();
             Serial.println("Configuration writed.");
             LoadConfiguration();
+            if(oldSsid != StationConfig.SSID){
+                resetFunc();
+            }
         }
     }
     server.send(200, "text/html", SendHTML());
@@ -373,7 +450,7 @@ FieldStationType GetFieldStationTypeFromString(const String &text) {
     return UndefinedFS;
 }
 
-String GetFieldStationTypeFromEnum(){
+String GetFieldStationTypeFromEnum() {
     switch (StationConfig.FSType) {
         case WaterSensor:
             return "WaterSensor";
@@ -382,8 +459,6 @@ String GetFieldStationTypeFromEnum(){
         default:
             return "UndefinedFS";
     }
-
-
 }
 
 void SaveConfiguration() {
@@ -403,9 +478,19 @@ void LoadConfiguration() {
 
 void PrintConfig() {
     Serial.println("Loaded configuration...");
+    Serial.print("Ssid: ");
+    Serial.println(StationConfig.SSID);
+    Serial.print("Psw: ");
+    Serial.println(StationConfig.PSW);
+    Serial.print("Web server address: ");
+    Serial.println(StationConfig.WebServerAddress);
+    Serial.print("WaterLevelFSId: ");
+    Serial.println(StationConfig.WaterLevelFSId);
     Serial.print("Id: ");
     Serial.println(StationConfig.Id);
-    Serial.print("Type:");
+    Serial.print("SType:");
     Serial.println(GetStationTypeFromEnum());
+    Serial.print("FSType:");
+    Serial.println(GetFieldStationTypeFromEnum());
     Serial.println("----------------");
 }

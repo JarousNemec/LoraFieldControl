@@ -38,13 +38,15 @@ enum StationType {
     Beacon, FieldStation, Bridge, UndefinedS, Pinger
 };
 enum FieldStationType {
-    UndefinedFS,WaterSensor, SolarPanelController
+    UndefinedFS, WaterSensor, SolarPanelController
 };
 
 struct ConfigStruct {
-    char Id[128]{};
-    char SSID[128]{};
-    char PSW[128]{};
+    char Id[32]{};
+    char SSID[32]{};
+    char PSW[32]{};
+    char WebServerAddress[32]{};
+    char WaterLevelFSId[32]{};
     StationType SType = UndefinedS;
     FieldStationType FSType = UndefinedFS;
 } StationConfig;
@@ -73,6 +75,7 @@ struct OtherDataStatusStruct {
 String BeaconId = "";
 const String ssid = "LoraNet";  // Enter SSID here
 const char *password = "12345678";  //Enter Password here
+const char *waterLevelServerEndpoint = "api/water-level/set";  //Enter Password here
 
 unsigned long shine_success_time = 0;
 unsigned long shine_send_time = 0;
@@ -110,7 +113,7 @@ void BehaveByStationType();
 
 void BehaveAsPinger();
 
-void SendPacket(PacketType type, const String& content, const String& source, const String& destination);
+void SendPacket(PacketType type, const String &content, const String &source, const String &destination);
 
 void ProcessDiscoverBeacon(JsonObject *pckt);
 
@@ -131,6 +134,10 @@ void CollectSensorData();
 FieldStationType GetFieldStationTypeFromString(const String &text);
 
 String GetFieldStationTypeFromEnum();
+
+bool IsWifiAvailable(const String &wifi_ssid);
+
+void(* resetFunc) (void) = 0;  // declare reset fuction at address 0
 
 #endif //LORARANGEMETER_MAIN_H
 
