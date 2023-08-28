@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Station control</title>
+</head>
+<body>
+<form action="/" method="post">
+    <label for="id">ID:</label>
+    <input type="text" id="id" name="id"><br><br>
+    <label>Type:</label>
+    <input type="radio" id="beacon" name="type" value="Beacon"><label for="beacon">Beacon</label>
+    <input type="radio" id="fieldStation" name="type" value="FieldStation" checked><label for="fieldStation">FieldStation</label>
+    <input type="radio" id="bridge" name="type" value="Bridge"><label for="bridge">Bridge</label>
+    <input type="radio" id="pinger" name="type" value="Pinger"><label for="pinger">Pinger</label><br><br>
+    <input type="submit" value="Submit">
+</form>
+</body>
+</html>
