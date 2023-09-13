@@ -1,5 +1,5 @@
-#include <ESP8266HTTPClient.h>
 #include "main.h"
+
 
 void setup() {
     Serial.begin(9600);
@@ -190,7 +190,7 @@ void BehaveAsFieldStation() {
             OtherDataStatus.OtherDataRequested && StationConfig.FSType == WaterSensor) {
             Serial.println("Other data sent!");
             String data = "OD";
-            data += WaterLevelStatus.actualLevel;
+            data += WaterLevelStatus.actualLevelPercentage;
             SendPacket(PacketType::SynAck, data, StationConfig.Id, BeaconId);
             OtherDataStatus.OtherDataSent = true;
             OtherDataStatus.OtherDataSentWhen = millis();
@@ -237,8 +237,28 @@ void ProcessPacket(JsonObject *pckt) {
 
 void CollectSensorData() {
     Serial.println("Collecting data...");
-    WaterLevelStatus.actualLevel = random(100);
+    switch (StationConfig.FSType) {
+        case UndefinedFS:
+            break;
+        case WaterSensor:
+            CollectWaterLevelSensorData();
+            break;
+        case SolarPanelController:
+            break;
+    }
     OtherDataStatus.OtherDataCollected = true;
+}
+
+void CollectWaterLevelSensorData(){
+    int sum = 0;
+    for (int i = 0; i < 10; ++i) {
+        sum += analogRead(A0);
+    }
+    int value = sum / 10;
+    double gab = StationConfig.MaximumAnalogLevel-StationConfig.MaximumAnalogLevel;
+    double onePercent = gab / 100;
+    int difference = value - StationConfig.MinimumAnalogLevel;
+    WaterLevelStatus.actualLevelPercentage = (int)round(difference / onePercent);
 }
 
 void ProcessOtherData(JsonObject *pckt) {
@@ -378,65 +398,8 @@ bool ValidatePacket(JsonObject *pckt) {
     return pckt->containsKey("t") && pckt->containsKey("s") && pckt->containsKey("d") && pckt->containsKey("c");
 }
 
-String SendHTML() {
-    String ptr = "<!DOCTYPE html>\n"
-                 "<html lang=\"en\">\n"
-                 "<head>\n"
-                 "    <meta charset=\"UTF-8\">\n"
-                 "    <title>Station control</title>\n"
-                 "</head>\n"
-                 "<body>\n"
-                 "    <form action=\"/\" method=\"post\">\n"
-
-                 "        <label for=\"ssid\">Gateway SSID (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"ssid\" name=\"ssid\" value=\"" + String(StationConfig.SSID) +
-                 "\"><br>\n"
-
-                 "        <label for=\"psw\">Gateway PSW (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"psw\" name=\"psw\" value=\"" + String(StationConfig.PSW) +
-                 "\"><br>\n"
-
-                 "        <label for=\"wsa\">Web server address (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"wsa\" name=\"wsa\" value=\"" +
-                 String(StationConfig.WebServerAddress) +
-                 "\"><br>\n"
-
-                 "        <label for=\"wlfsid\">Water level FS Id (only for beacon):</label>\n"
-                 "        <input type=\"text\" id=\"wlfsid\" name=\"wlfsid\" value=\"" +
-                 String(StationConfig.WaterLevelFSId) +
-                 "\"><br>\n"
-
-                 "        <label for=\"id\">ID:</label>\n"
-                 "        <input type=\"text\" id=\"id\" name=\"id\" value=\"" + String(StationConfig.Id) + "\"><br>\n"
-
-                                                                                                            "        <label>Station Type:</label>\n"
-                                                                                                            "        <input type=\"radio\" id=\"beacon\" name=\"stype\" value=\"Beacon\" " +
-                 (StationConfig.SType == Beacon ? "checked" : "") + " ><label for=\"beacon\" >Beacon</label>\n"
-                                                                    "        <input type=\"radio\" id=\"fieldStation\" name=\"stype\" value=\"FieldStation\" " +
-                 (StationConfig.SType == FieldStation ? "checked" : "") +
-                 " ><label for=\"fieldStation\">FieldStation</label>\n"
-                 "        <input type=\"radio\" id=\"bridge\" name=\"stype\" value=\"Bridge\"><label for=\"bridge\" " +
-                 (StationConfig.SType == Bridge ? "checked" : "") + " >Bridge</label>\n"
-                                                                    "        <input type=\"radio\" id=\"pinger\" name=\"stype\" value=\"Pinger\"><label for=\"pinger\" " +
-                 (StationConfig.SType == Pinger ? "checked" : "") + " >Pinger</label><br>\n"
-
-                                                                    "        <label>FieldStation Type:</label>\n"
-                                                                    "        <input type=\"radio\" id=\"waterSensor\" name=\"fstype\" value=\"WaterSensor\" " +
-                 (StationConfig.FSType == WaterSensor ? "checked" : "") +
-                 " ><label for=\"waterSensor\" >WaterSensor</label>\n"
-                 "        <input type=\"radio\" id=\"solarPanelController\" name=\"fstype\" value=\"SolarPanelController\" " +
-                 (StationConfig.FSType == SolarPanelController ? "checked" : "") +
-                 " ><label for=\"solarPanelController\">SolarPanelController</label>\n"
-
-                 "        <input type=\"submit\" value=\"Submit\">"
-                 "    </form>\n"
-                 "</body>\n"
-                 "</html>";
-    return ptr;
-}
-
 void HandleOnConnect() {
-    if (server.method() == HTTP_POST && server.args() == 7) {
+    if (server.method() == HTTP_POST && server.args() == 9) {
         if (server.argName(4) == "id" && server.argName(5) == "stype") {
             String oldSsid = StationConfig.SSID;
             server.arg(0).toCharArray(StationConfig.SSID, 32);
@@ -446,6 +409,10 @@ void HandleOnConnect() {
             server.arg(4).toCharArray(StationConfig.Id, 32);
             StationConfig.SType = GetStationTypeFromString(server.arg(5));
             StationConfig.FSType = GetFieldStationTypeFromString(server.arg(6));
+            Serial.println(server.arg(7).toInt());
+            Serial.println(server.arg(8).toInt());
+            StationConfig.MaximumAnalogLevel = (uint16)server.arg(7).toInt();
+            StationConfig.MinimumAnalogLevel = (uint16)server.arg(8).toInt();
             SaveConfiguration();
             Serial.println("Configuration writed.");
             LoadConfiguration();
@@ -454,7 +421,7 @@ void HandleOnConnect() {
             }
         }
     }
-    server.send(200, "text/html", SendHTML());
+    server.send(200, "text/html", AssembleHTMLPage(&StationConfig));
 }
 
 void HandleNotFound() {
@@ -537,9 +504,13 @@ void PrintConfig() {
     Serial.println(StationConfig.WaterLevelFSId);
     Serial.print("Id: ");
     Serial.println(StationConfig.Id);
-    Serial.print("SType:");
+    Serial.print("SType: ");
     Serial.println(GetStationTypeFromEnum());
-    Serial.print("FSType:");
+    Serial.print("FSType: ");
     Serial.println(GetFieldStationTypeFromEnum());
+    Serial.print("AnalogLevelMax: ");
+    Serial.println(StationConfig.MaximumAnalogLevel);
+    Serial.print("AnalogLevelMin: ");
+    Serial.println(StationConfig.MinimumAnalogLevel);
     Serial.println("----------------");
 }

@@ -5,6 +5,9 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include "../lib/ESP_EEPROM/src/ESP_EEPROM.h"
+#include "SystemStructures.h"
+#include <ESP8266HTTPClient.h>
+#include "website.h"
 
 #ifndef LORARANGEMETER_MAIN_H
 #define LORARANGEMETER_MAIN_H
@@ -34,58 +37,11 @@ DynamicJsonBuffer jBuffer;
 WiFiClient client;
 HTTPClient http;
 
-
-enum PacketType {
-    Syn = 1, SynAck = 2, Ack = 3
-};
-
-enum StationType {
-    Beacon, FieldStation, Bridge, UndefinedS, Pinger
-};
-enum FieldStationType {
-    UndefinedFS, WaterSensor, SolarPanelController
-};
-
-struct ConfigStruct {
-    char Id[32]{};
-    char SSID[32]{};
-    char PSW[32]{};
-    char WebServerAddress[32]{};
-    char WaterLevelFSId[32]{};
-    StationType SType = UndefinedS;
-    FieldStationType FSType = UndefinedFS;
-} StationConfig;
-
-struct PingStatusStruct {
-    bool PingSent = false;
-    String PingSentTo = "";
-    unsigned long PingSentWhen = 0;
-} PingStatus;
-
-struct BeaconDiscoverStatusStruct {
-    bool DiscoverSent = false;
-    unsigned long DiscoverSentWhen = 0;
-    String DiscoverTarget = "all";
-} BeaconDiscoverStatus;
-
-struct OtherDataStatusStruct {
-    bool OtherDataSent = false;
-    bool OtherDataRequested = false;
-    bool OtherDataCollected = false;
-    unsigned long OtherDataSentWhen = 0;
-    String OtherDataTarget = "";
-    String OtherData = "";
-    int AttemptsCount = 0;
-} OtherDataStatus;
-
-
-struct WaterLevelStatusStruct {
-    unsigned long collect_water_level_time = 0;
-    int maximumLevel = 0;
-    int minimumLevel = 0;
-    int actualLevel = 0;
-    const String waterLevelServerEndpoint = "api/water-level/set";
-} WaterLevelStatus;
+ConfigStruct  StationConfig;
+PingStatusStruct PingStatus;
+BeaconDiscoverStatusStruct BeaconDiscoverStatus;
+OtherDataStatusStruct OtherDataStatus;
+WaterLevelStatusStruct WaterLevelStatus;
 String BeaconId = "";
 
 const String ssid = "LoraNet";  // Enter SSID here
@@ -101,7 +57,7 @@ IPAddress subnet(255, 255, 255, 0);
 
 ESP8266WebServer server(80);
 
-String SendHTML();
+//String AssembleHTMLPage();
 
 void HandleNotFound();
 
@@ -154,6 +110,8 @@ bool IsWifiAvailable(const String &wifi_ssid);
 void(* resetFunc) (void) = 0;  // declare reset fuction at address 0
 
 void BehaveAsBeacon();
+
+void CollectWaterLevelSensorData();
 
 #endif //LORARANGEMETER_MAIN_H
 
